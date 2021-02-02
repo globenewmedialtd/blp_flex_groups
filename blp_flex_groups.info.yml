@@ -1,0 +1,8 @@
+name: 'BLP Flex Groups Core'
+description: 'Provides features to create new group types based on flexible.'
+type: module
+core: 8.x
+dependencies:
+  - social_group_flexible_group
+core_incompatible: false
+package: BLP
