@@ -210,12 +210,17 @@ function blp_flex_groups_social_group_allowed_visibilities_alter(array &$visibil
     $group = _social_group_get_current_group();
 
     if ($group !== NULL) {
+      // Set all visibilities for that group to FALSE
+      foreach($visibilities as $visibility => $value) {
+        $visibilities[$visibility] = FALSE;
+      }
+            
       // Try to retrieve allowed options from Group directly.
       $allowed_options = $group->get('field_group_allowed_visibility')->getValue();
       foreach ($allowed_options as $option) {
         $value = $option['value'];
         $visibilities[$value] = TRUE;
-      }
+      }      
     }
   }
 }
