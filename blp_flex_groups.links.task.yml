@@ -1,0 +1,4 @@
+blp_flex_groups.event_series:
+  route_name: view.event_series_per_project.page_event_series 
+  title: 'Event Series'
+  base_route: entity.group.canonical

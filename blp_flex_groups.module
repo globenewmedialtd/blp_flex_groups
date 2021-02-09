@@ -234,30 +234,21 @@ function blp_flex_groups_social_group_allowed_visibilities_alter(array &$visibil
  */
 function blp_flex_groups_menu_local_tasks_alter(&$data, $route_name) {
 
- 
-
-  //try to get the currently displayed node
-  $group = \Drupal::routeMatch()->getParameter('group');
-
-  if ($group instanceof GroupInterface) {
-
-  	$group_id = $group->id();  
+  if ($route_name === 'entity.group.canonical') {
   
-    //check if this is a group that is available as reference
-    // in another group
-    if(getReferencedGroup($group_id)) {    
-      //add the custom tab.
-      $data['tabs'][0]['your_custom_route_name'] = [
-        '#theme' => 'menu_local_task',
-        '#link' => [
-          'title' => t('Event series'),
-          //create a url object. here from a route, but can be Url object.
-          'url' => Url::fromRoute('view.event_series_per_project.page_event_series', [
-            //set route parameters. check modulename.routing.yml for parameters
-            'group' => $group->id->value,
-          ]),
-        ],
-      ];      
+    //try to get the currently displayed node
+    $group = \Drupal::routeMatch()->getParameter('group');
+
+    if ($group instanceof GroupInterface) {
+
+  	  $group_id = $group->id();     
+  
+      //check if this is a group that is available as reference
+      // in another group
+      if(!getReferencedGroup($group_id)) {    
+        //remove the tab.
+        unset($data['tabs'][0]['blp_flex_groups.event_series']);
+      }
     }
   }
 }
