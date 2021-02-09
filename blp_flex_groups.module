@@ -18,6 +18,8 @@ use Drupal\views\ViewExecutable;
 use Drupal\views\Views;
 use Drupal\Core\Database\Query\AlterableInterface;
 use Drupal\Core\Url;
+use Drupal\blp_flex_groups\EntityAccessHelper;
+use Drupal\node\NodeInterface;
 
  /**
  * Helper function to get Flexible group types
@@ -268,6 +270,10 @@ function blp_flex_groups_menu_local_tasks_alter(&$data, $route_name) {
  */
 function getReferencedGroup($group_id) {
 
+  if (!checkforFieldInBundle()) {
+    return;
+  }
+
   $result = \Drupal::entityQuery('group')
     ->condition('type', 'blp_event')
     ->condition('field_group_blp_project', $group_id)
@@ -279,4 +285,19 @@ function getReferencedGroup($group_id) {
 
   return false;
 
+}
+
+/**
+ * Check if a bundle holds a certain field.
+ */
+function checkforFieldInBundle($entity_type = 'group', $bundle = 'blp_event', $field_name = 'field_group_blp_project') {
+  $all_bundle_fields = \Drupal::service('entity_field.manager')->getFieldDefinitions($entity_type, $bundle);
+  return isset($all_bundle_fields[$field_name]);
+}
+
+/**
+ * Implements hook_node_access().
+ */
+function blp_flex_groups_node_access(NodeInterface $node, $op, AccountInterface $account) {
+  return EntityAccessHelper::getEntityAccessResult($node, $op, $account);
 }
