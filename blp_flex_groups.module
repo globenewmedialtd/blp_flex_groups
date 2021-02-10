@@ -234,23 +234,21 @@ function blp_flex_groups_social_group_allowed_visibilities_alter(array &$visibil
  */
 function blp_flex_groups_menu_local_tasks_alter(&$data, $route_name) {
 
-  if ($route_name === 'entity.group.canonical') {
-  
     //try to get the currently displayed node
     $group = \Drupal::routeMatch()->getParameter('group');
 
     if ($group instanceof GroupInterface) {
 
-  	  $group_id = $group->id();     
+  	  $group_id = $group->id();  
   
       //check if this is a group that is available as reference
       // in another group
-      if(!getReferencedGroup($group_id)) {    
+      if(!getReferencedGroup($group_id)) {           
         //remove the tab.
         unset($data['tabs'][0]['blp_flex_groups.event_series']);
       }
     }
-  }
+ 
 }
 
 /**
@@ -261,20 +259,22 @@ function blp_flex_groups_menu_local_tasks_alter(&$data, $route_name) {
  */
 function getReferencedGroup($group_id) {
 
-  if (!checkforFieldInBundle()) {
-    return;
-  }
+  $field_available = FALSE;
 
-  $result = \Drupal::entityQuery('group')
+  if (checkforFieldInBundle()) {
+
+    $result = \Drupal::entityQuery('group')
     ->condition('type', 'blp_event')
     ->condition('field_group_blp_project', $group_id)
     ->execute();
 
-  if ($result) {
-    return true;
+    if ($result) {
+      $field_available = TRUE;
+    }
+    
   }
 
-  return false;
+  return $field_available;
 
 }
 

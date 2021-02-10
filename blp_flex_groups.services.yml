@@ -1,0 +1,6 @@
+services:
+  blp_flex_groups.local_task_redirect:
+    class: Drupal\blp_flex_groups\EventSubscriber\LocalTaskRedirect
+    arguments: []
+    tags:
+      - { name: event_subscriber }
