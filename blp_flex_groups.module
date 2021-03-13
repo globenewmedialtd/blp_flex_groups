@@ -228,40 +228,16 @@ function blp_flex_groups_social_group_allowed_visibilities_alter(array &$visibil
 }
 
 /**
- * Implements hook_menu_local_tasks_alter().
- * Add tab with custom title and link only to groups 
- * with an entity reference to the valid group. 
- */
-function blp_flex_groups_menu_local_tasks_alter(&$data, $route_name) {
-
-    //try to get the currently displayed node
-    $group = \Drupal::routeMatch()->getParameter('group');
-
-    if ($group instanceof GroupInterface) {
-
-  	  $group_id = $group->id();  
-  
-      //check if this is a group that is available as reference
-      // in another group
-      if(!getReferencedGroup($group_id)) {           
-        //remove the tab.
-        unset($data['tabs'][0]['blp_flex_groups.event_series']);
-      }
-    }
- 
-}
-
-/**
  * Provide a helper function to check for entity reference.
  *
  * @param int $group_id
  *   The group id.
  */
-function getReferencedGroup($group_id) {
+function blp_flex_groups_get_referenced_group($group_id) {
 
   $field_available = FALSE;
 
-  if (checkforFieldInBundle()) {
+  if (blp_flex_groups_check_for_field_in_bundle()) {
 
     $result = \Drupal::entityQuery('group')
     ->condition('type', 'blp_event')
@@ -281,7 +257,7 @@ function getReferencedGroup($group_id) {
 /**
  * Check if a bundle holds a certain field.
  */
-function checkforFieldInBundle($entity_type = 'group', $bundle = 'blp_event', $field_name = 'field_group_blp_project') {
+function blp_flex_groups_check_for_field_in_bundle($entity_type = 'group', $bundle = 'blp_event', $field_name = 'field_group_blp_project') {
   $all_bundle_fields = \Drupal::service('entity_field.manager')->getFieldDefinitions($entity_type, $bundle);
   return isset($all_bundle_fields[$field_name]);
 }
@@ -292,3 +268,5 @@ function checkforFieldInBundle($entity_type = 'group', $bundle = 'blp_event', $f
 function blp_flex_groups_node_access(NodeInterface $node, $op, AccountInterface $account) {
   return EntityAccessHelper::getEntityAccessResult($node, $op, $account);
 }
+
+

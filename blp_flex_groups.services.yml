@@ -1,6 +1,10 @@
 services:
-  blp_flex_groups.local_task_redirect:
-    class: Drupal\blp_flex_groups\EventSubscriber\LocalTaskRedirect
-    arguments: []
+  blp_flex_groups_access.route_subscriber:
+    class: Drupal\blp_flex_groups\Routing\RouteSubscriber
     tags:
       - { name: event_subscriber }
+
+  blp_flex_groups_access.check_access:
+    class: Drupal\blp_flex_groups\Access\BlpFlexGroupsAccessCheck
+    tags:
+      - { name: access_check, applies_to: _blp_flex_group_custom_access }
