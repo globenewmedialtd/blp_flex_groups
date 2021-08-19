@@ -269,4 +269,213 @@ function blp_flex_groups_node_access(NodeInterface $node, $op, AccountInterface 
   return EntityAccessHelper::getEntityAccessResult($node, $op, $account);
 }
 
+/**
+ * Implements hook_theme_registry_alter
+ * This is needed because social_group uses hook_preprocess_HOOK!
+ * {@inheritdoc}
+ */
+function blp_flex_groups_theme_registry_alter(&$theme_registry) {
+  $theme_registry['group__hero']['preprocess functions'] = [
+    0 => 'social_group_preprocess_group__hero',
+    1 => 'blp_flex_groups_preprocess_group__hero'
+  ];
+}
+
+
+/**
+ * Implements hook_preprocess_HOOK().
+ */
+function blp_flex_groups_preprocess_group__hero(array &$variables) {
+
+  /** @var \Drupal\group\Entity\GroupInterface $group */
+  $group = $variables['group'];
+  $account = \Drupal::currentUser();
+
+  $flex_groups = blp_flex_group_get_flexible_group_types();
+  unset($flex_groups['flexible_group']);
+
+  if (in_array($group->bundle(),$flex_groups)) {
+
+    // Render the group settings help, gear icon with popover.
+    $group_settings_help = _blp_flex_groups_render_group_settings_hero($group);
+  }
+  else {
+
+    // Render the group settings help, gear icon with popover.
+    $group_settings_help = _social_group_render_group_settings_hero($group);
+
+    if ($group->bundle() == 'public_group' && $account->isAnonymous()) {
+      $variables['group_operations_url'] = Url::fromRoute('user.register', [], [
+        'query' => [
+          'destination' => Url::fromRoute('entity.group.join', [
+            'group' => $group->id(),
+          ])->toString(),
+        ],
+      ])->toString();
+    }
+
+   
+
+  }
+  
+  $variables['group_settings_help'] = \Drupal::service('renderer')->renderPlain($group_settings_help);
+
+}
+
+/**
+ * Renders the group settings based on available fields for the hero.
+ *
+ * @param \Drupal\group\Entity\GroupInterface $group
+ *   the Group interface.
+ *
+ * @return array
+ *   the actual tooltip render array.
+ */
+function _blp_flex_groups_render_group_settings_hero(GroupInterface $group) {
+  $description = '';
+  // Optional after 10.0.x we can render the group visibility.
+  if ($group_visibility_option = _blp_flex_groups_get_group_visibility($group)) {
+    // Wrap our chosen description in a container.
+    $description .= '<span class="title">' . t('Group visibility') . '</span>';
+    $description .= '<div class="group-visibility-details container-background">';
+    foreach ($group_visibility_option as $key => $group_visibility_string) {
+      $description .= $group_visibility_string;
+    }
+    $description .= '</div>';
+  }
+  // Optional after 9.x we can render the allowed content visibility.
+  if ($allowed_visibility_option = _blp_flex_groups_get_allowed_visibility($group)) {
+    // Wrap our chosen description in a container.
+    $description .= '<span class="title">' . t('Group content visibility') . '</span>';
+    $description .= '<div class="group-visibility-details container-background">';
+    foreach ($allowed_visibility_option as $key => $allowed_visibility_string) {
+      $description .= $allowed_visibility_string;
+    }
+    $description .= '</div>';
+  }
+  // Optional after 9.x we can render the join methods.
+  if ($join_methods_option = _blp_flex_groups_get_join_methods($group)) {
+    // Wrap our chosen description in a container.
+    $description .= '<span class="title">' . t('Join method') . '</span>';
+    $description .= '<div class="group-visibility-details container-background">';
+    foreach ($join_methods_option as $key => $join_methods_string) {
+      $description .= $join_methods_string;
+    }
+    $description .= '</div>';
+  }
+
+  return social_group_render_tooltip('group_hero', t('Access permissions'), $description);
+}
+
+/**
+ * Get the join methods of a group.
+ *
+ * @param \Drupal\group\Entity\GroupInterface $group
+ *   the Group interface.
+ *
+ * @return array
+ *   Returns join methods of a group.
+ */
+function _blp_flex_groups_get_join_methods(GroupInterface $group) {
+  $group_type = $group->getGroupType();
+  $group_type_id = $group_type->id();
+  $join_methods = [];
+
+  if ($group_type_id == 'blp_event' || 
+      $group_type_id == 'blp_project') {
+
+      // Try to retrieve join methods from Group directly.
+      $allowed_options = $group->get('field_group_allowed_join_method')
+        ->getValue();
+      foreach ($allowed_options as $option) {
+        // Lets grab the value from the selected radio item.
+        if (!empty($option['value']) && is_string($option['value'])) {
+          $join_methods[$option['value']] = social_group_allowed_join_method_description($option['value']);
+        }
+      }
+
+
+  }
+
+  return $join_methods;
+
+}
+
+/**
+ * Get the group visibility label of a group.
+ *
+ * @param \Drupal\group\Entity\GroupInterface $group
+ *   the Group interface.
+ * @param string $field_name
+ *   The field name of the visibility field for a group type.
+ *
+ * @return array
+ *   Returns the visibility options of a group.
+ */
+function _blp_flex_groups_get_group_visibility(GroupInterface $group, $field_name = NULL) {
+  $group_type = $group->getGroupType();
+  $group_type_id = $group_type->id();
+  $group_visibility = [];
+
+
+  if ($group_type_id == 'blp_event' || 
+      $group_type_id == 'blp_project') {
+
+      if ($group->hasField('field_flexible_group_visibility')) {
+        $visibility_values = $group->get('field_flexible_group_visibility')->getValue();
+        // Lets grab the rendered description for the group visibility.
+        if (!empty($visibility_values)) {
+          foreach ($visibility_values as $visibility_value) {
+            if (!empty($visibility_value['value']) && is_string($visibility_value['value'])) {
+              $group_visibility[$visibility_value['value']] = social_group_group_visibility_description($visibility_value['value']);
+            }
+          }
+        }
+        
+      }
+
+  }
+
+  return $group_visibility;
+
+
+}
+
+/**
+ * Get the allowed visibility of a group.
+ *
+ * @param Drupal\group\Entity\GroupInterface $group
+ *   the Group interface.
+ *
+ * @return array
+ *   Returns allowed visibility of a group.
+ */
+function _blp_flex_groups_get_allowed_visibility(GroupInterface $group) {
+  $group_type = $group->getGroupType();
+  $group_type_id = $group_type->id();
+  $allowed_visibility = [];
+
+
+  if ($group_type_id == 'blp_event' || 
+      $group_type_id == 'blp_project') {
+
+      // Try to retrieve allowed visibility from Group directly.
+      $allowed_options = $group->get('field_group_allowed_visibility')
+        ->getValue();
+      foreach ($allowed_options as $option) {
+        if (!empty($option['value']) && is_string($option['value'])) {
+          $allowed_visibility[$option['value']] = social_group_allowed_visibility_description($option['value']);
+        }
+      }
+
+  }
+   
+  return $allowed_visibility;
+
+}
+
+
+
+
+
 
