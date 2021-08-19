@@ -290,8 +290,8 @@ function blp_flex_groups_preprocess_group__hero(array &$variables) {
   /** @var \Drupal\group\Entity\GroupInterface $group */
   $group = $variables['group'];
   $account = \Drupal::currentUser();
-
-  $flex_groups = blp_flex_group_get_flexible_group_types();
+  
+  $flex_groups = blp_flex_groups_get_flexible_group_types();
   unset($flex_groups['flexible_group']);
 
   if (in_array($group->bundle(),$flex_groups)) {
