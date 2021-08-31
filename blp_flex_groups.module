@@ -270,212 +270,137 @@ function blp_flex_groups_node_access(NodeInterface $node, $op, AccountInterface 
 }
 
 /**
- * Implements hook_theme_registry_alter
- * This is needed because social_group uses hook_preprocess_HOOK!
- * {@inheritdoc}
+ * Implements hook_implements_alter().
  */
-function blp_flex_groups_theme_registry_alter(&$theme_registry) {
-  $theme_registry['group__hero']['preprocess functions'] = [
-    0 => 'social_group_preprocess_group__hero',
-    1 => 'blp_flex_groups_preprocess_group__hero'
-  ];
+function blp_flex_groups_implements_alter(&$implementations, $hook) {
+  if ($hook == 'views_query_alter') {
+    $group = $implementations['blp_flex_groups'];
+    unset($implementations['social_group_flexible_group']);
+    unset($implementations['blp_flex_groups']);
+    $implementations['blp_flex_groups'] = $group;
+  }
 }
 
-
 /**
- * Implements hook_preprocess_HOOK().
+ * Implements hook_views_query_alter().
+ *
+ * Hide flexible groups everywhere when the current user cant see it.
  */
-function blp_flex_groups_preprocess_group__hero(array &$variables) {
+function blp_flex_groups_views_query_alter(ViewExecutable $view, QueryPluginBase $query) {
+  if (empty($view->rowPlugin) || !($view->rowPlugin instanceof EntityRow) || $view->rowPlugin->getEntityTypeId() !== 'group') {
+    return;
+  }
 
-  /** @var \Drupal\group\Entity\GroupInterface $group */
-  $group = $variables['group'];
+  $flexible_groups = blp_flex_groups_get_flexible_group_types();
+
   $account = \Drupal::currentUser();
-  
-  $flex_groups = blp_flex_groups_get_flexible_group_types();
-  unset($flex_groups['flexible_group']);
 
-  if (in_array($group->bundle(),$flex_groups)) {
-
-    // Render the group settings help, gear icon with popover.
-    $group_settings_help = _blp_flex_groups_render_group_settings_hero($group);
+  if (!$account->isAnonymous()) {
+    // Don't trigger page cache, this will cache it for AN
+    // but with LU data.
+    // Dynamic page cache handles this.
+    \Drupal::service('page_cache_kill_switch')->trigger();
   }
-  else {
 
-    // Render the group settings help, gear icon with popover.
-    $group_settings_help = _social_group_render_group_settings_hero($group);
+  // Don't check, they can see it all.
+  if ($account->hasPermission('manage all groups')) {
+    return;
+  }
 
-    if ($group->bundle() == 'public_group' && $account->isAnonymous()) {
-      $variables['group_operations_url'] = Url::fromRoute('user.register', [], [
-        'query' => [
-          'destination' => Url::fromRoute('entity.group.join', [
-            'group' => $group->id(),
-          ])->toString(),
-        ],
-      ])->toString();
+  // Let's build our join with the allowed visibility data.
+  $configuration = [
+    'type'       => 'LEFT',
+    'table'      => 'group__field_flexible_group_visibility',
+    'field'      => 'entity_id',
+    'left_table' => 'groups_field_data',
+    'left_field' => 'id',
+    'operator'   => '=',
+  ];
+
+  $alias = 'groups_field_flexible_group_visibility';
+
+  /** @var \Drupal\views\Plugin\views\query\Sql $query */
+  $join = Views::pluginManager('join')->createInstance('standard', $configuration);
+  $rel = $query->addRelationship($alias, $join, 'groups_field_data');
+  $query->addTable('group__field_flexible_group_visibility', $rel, $join, $alias);
+
+  /** @var \Drupal\views\Plugin\views\query\Sql $query */
+  $current_where = count($query->where);
+
+  // Make sure we add one new group with a where clause.
+  $new_where = $current_where + 1;
+
+  // We need to add our group by using a query tag.
+  // Otherwise views doesn't accept it.
+  $query->addTag('flexible_group_by');
+
+  // AN users can only see flexible groups that are public.
+  if ($account->isAnonymous()) {
+    // Add context so for AN it will have a different cache.
+    $view->element['#cache']['contexts'][] = 'user.roles:anonymous';
+    $query->setGroupOperator('OR');
+    // Secret group also alters the query, so lets do it better.
+    if (\Drupal::moduleHandler()->moduleExists('social_group_secret')) {
+      $query->addWhere(1, 'groups_field_data.type', ['flexible_group','blp_event','blp_project'], 'NOT IN');
+      $query->addWhere(2, 'groups_field_data.type', [
+	'blp_project',
+        'blp_event',        
+	'flexible_group',
+        'secret_group',
+        'closed_group',
+        'open_group',
+      ], 'NOT IN');
+      $query->addWhere($new_where, 'field_flexible_group_visibility_value', ['public'], 'IN');
+      $query->addWhere($new_where, 'groups_field_data.type', ['flexible_group','blp_project','blp_event'], 'IN');
+      return;
     }
 
-   
+    // Make sure we remove flexible group as an option so only public groups
+    // are part of this clause.
+    $query->addWhere($current_where, 'groups_field_data.type', ['flexible_group','blp_project','blp_event'], 'NOT IN');
 
+    // OR it is a flexible group but than we only want groups
+    // that have the public content visibility for AN users.
+    $query->setWhereGroup('AND', $new_where);
+    $query->addWhere($new_where, 'field_flexible_group_visibility_value', ['public'], 'IN');
+    $query->addWhere($new_where, 'groups_field_data.type', ['flexible_group','blp_event','blp_project'], 'IN');
+    return;
   }
-  
-  $variables['group_settings_help'] = \Drupal::service('renderer')->renderPlain($group_settings_help);
 
+  // We need to render this as an OR operator now.
+  // Because we want to allow the other filters to still take place.
+  $query->setGroupOperator('OR');
+
+  // First we remove flexible groups from the existing where clause.
+  // We need this, otherwise there won't be any open, closed, public groups
+  // showed.
+  $query->addWhere($current_where, 'groups_field_data.type', ['flexible_group','blp_event','blp_project'], 'NOT IN');
+
+  // In this case we are LU, we already checked if we have the manage groups
+  // permission. So lets add a check to remove flexible groups
+  // that have the group_visibility set to members for groups we are a
+  // member of.
+  $my_groups = \Drupal::service('social_group.helper_service')
+    ->getAllGroupsForUser($account->id());
+  $view->element['#cache']['contexts'][] = 'user';
+  // Make sure this block gets refreshed for a user if the group membership
+  // changed for this user.
+  if (!empty($my_groups)) {
+    $view->element['#cache']['tags'][] = 'group_content_list:plugin:group_membership:entity:' . $account->id();
+    $query->setWhereGroup('AND', $new_where);
+    $query->addWhere($new_where, 'field_flexible_group_visibility_value', ['members'], 'IN');
+    $query->addWhere($new_where, 'groups_field_data.id', $my_groups, 'IN');
+  }
+  $extra_where = $new_where + 1;
+  // OR we add a new Where clause for any community group visibility related
+  // groups. Because any LU can see those for the community, regardless of
+  // their memberships.
+  $query->setWhereGroup('AND', $extra_where);
+  $query->addWhere($extra_where, 'field_flexible_group_visibility_value', [
+    'public',
+    'community',
+  ], 'IN');
 }
-
-/**
- * Renders the group settings based on available fields for the hero.
- *
- * @param \Drupal\group\Entity\GroupInterface $group
- *   the Group interface.
- *
- * @return array
- *   the actual tooltip render array.
- */
-function _blp_flex_groups_render_group_settings_hero(GroupInterface $group) {
-  $description = '';
-  // Optional after 10.0.x we can render the group visibility.
-  if ($group_visibility_option = _blp_flex_groups_get_group_visibility($group)) {
-    // Wrap our chosen description in a container.
-    $description .= '<span class="title">' . t('Group visibility') . '</span>';
-    $description .= '<div class="group-visibility-details container-background">';
-    foreach ($group_visibility_option as $key => $group_visibility_string) {
-      $description .= $group_visibility_string;
-    }
-    $description .= '</div>';
-  }
-  // Optional after 9.x we can render the allowed content visibility.
-  if ($allowed_visibility_option = _blp_flex_groups_get_allowed_visibility($group)) {
-    // Wrap our chosen description in a container.
-    $description .= '<span class="title">' . t('Group content visibility') . '</span>';
-    $description .= '<div class="group-visibility-details container-background">';
-    foreach ($allowed_visibility_option as $key => $allowed_visibility_string) {
-      $description .= $allowed_visibility_string;
-    }
-    $description .= '</div>';
-  }
-  // Optional after 9.x we can render the join methods.
-  if ($join_methods_option = _blp_flex_groups_get_join_methods($group)) {
-    // Wrap our chosen description in a container.
-    $description .= '<span class="title">' . t('Join method') . '</span>';
-    $description .= '<div class="group-visibility-details container-background">';
-    foreach ($join_methods_option as $key => $join_methods_string) {
-      $description .= $join_methods_string;
-    }
-    $description .= '</div>';
-  }
-
-  return social_group_render_tooltip('group_hero', t('Access permissions'), $description);
-}
-
-/**
- * Get the join methods of a group.
- *
- * @param \Drupal\group\Entity\GroupInterface $group
- *   the Group interface.
- *
- * @return array
- *   Returns join methods of a group.
- */
-function _blp_flex_groups_get_join_methods(GroupInterface $group) {
-  $group_type = $group->getGroupType();
-  $group_type_id = $group_type->id();
-  $join_methods = [];
-
-  if ($group_type_id == 'blp_event' || 
-      $group_type_id == 'blp_project') {
-
-      // Try to retrieve join methods from Group directly.
-      $allowed_options = $group->get('field_group_allowed_join_method')
-        ->getValue();
-      foreach ($allowed_options as $option) {
-        // Lets grab the value from the selected radio item.
-        if (!empty($option['value']) && is_string($option['value'])) {
-          $join_methods[$option['value']] = social_group_allowed_join_method_description($option['value']);
-        }
-      }
-
-
-  }
-
-  return $join_methods;
-
-}
-
-/**
- * Get the group visibility label of a group.
- *
- * @param \Drupal\group\Entity\GroupInterface $group
- *   the Group interface.
- * @param string $field_name
- *   The field name of the visibility field for a group type.
- *
- * @return array
- *   Returns the visibility options of a group.
- */
-function _blp_flex_groups_get_group_visibility(GroupInterface $group, $field_name = NULL) {
-  $group_type = $group->getGroupType();
-  $group_type_id = $group_type->id();
-  $group_visibility = [];
-
-
-  if ($group_type_id == 'blp_event' || 
-      $group_type_id == 'blp_project') {
-
-      if ($group->hasField('field_flexible_group_visibility')) {
-        $visibility_values = $group->get('field_flexible_group_visibility')->getValue();
-        // Lets grab the rendered description for the group visibility.
-        if (!empty($visibility_values)) {
-          foreach ($visibility_values as $visibility_value) {
-            if (!empty($visibility_value['value']) && is_string($visibility_value['value'])) {
-              $group_visibility[$visibility_value['value']] = social_group_group_visibility_description($visibility_value['value']);
-            }
-          }
-        }
-        
-      }
-
-  }
-
-  return $group_visibility;
-
-
-}
-
-/**
- * Get the allowed visibility of a group.
- *
- * @param Drupal\group\Entity\GroupInterface $group
- *   the Group interface.
- *
- * @return array
- *   Returns allowed visibility of a group.
- */
-function _blp_flex_groups_get_allowed_visibility(GroupInterface $group) {
-  $group_type = $group->getGroupType();
-  $group_type_id = $group_type->id();
-  $allowed_visibility = [];
-
-
-  if ($group_type_id == 'blp_event' || 
-      $group_type_id == 'blp_project') {
-
-      // Try to retrieve allowed visibility from Group directly.
-      $allowed_options = $group->get('field_group_allowed_visibility')
-        ->getValue();
-      foreach ($allowed_options as $option) {
-        if (!empty($option['value']) && is_string($option['value'])) {
-          $allowed_visibility[$option['value']] = social_group_allowed_visibility_description($option['value']);
-        }
-      }
-
-  }
-   
-  return $allowed_visibility;
-
-}
-
-
-
 
 
 
