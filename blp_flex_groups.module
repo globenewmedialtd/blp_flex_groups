@@ -547,15 +547,17 @@ function blp_flex_groups_views_query_alter(ViewExecutable $view, QueryPluginBase
     $query->setGroupOperator('OR');
     // Secret group also alters the query, so lets do it better.
     if (\Drupal::moduleHandler()->moduleExists('social_group_secret')) {
-      $query->addWhere(1, 'groups_field_data.type', ['flexible_group'], 'NOT IN');
+      $query->addWhere(1, 'groups_field_data.type', ['flexible_group','blp_project','blp_event'], 'NOT IN');
       $query->addWhere(2, 'groups_field_data.type', [      
 	'flexible_group',
+	'blp_project',
+        'blp_event',
         'secret_group',
         'closed_group',
         'open_group',
       ], 'NOT IN');
       $query->addWhere($new_where, 'field_flexible_group_visibility_value', ['public'], 'IN');
-      $query->addWhere($new_where, 'groups_field_data.type', ['flexible_group'], 'IN');
+      $query->addWhere($new_where, 'groups_field_data.type', ['flexible_group','blp_project','blp_event'], 'IN');
       return;
     }
 
@@ -567,7 +569,7 @@ function blp_flex_groups_views_query_alter(ViewExecutable $view, QueryPluginBase
     // that have the public content visibility for AN users.
     $query->setWhereGroup('AND', $new_where);
     $query->addWhere($new_where, 'field_flexible_group_visibility_value', ['public'], 'IN');
-    $query->addWhere($new_where, 'groups_field_data.type', ['flexible_group'], 'IN');
+    $query->addWhere($new_where, 'groups_field_data.type', ['flexible_group','blp_project','blp_event'], 'IN');
     return;
   }
 
@@ -578,7 +580,7 @@ function blp_flex_groups_views_query_alter(ViewExecutable $view, QueryPluginBase
   // First we remove flexible groups from the existing where clause.
   // We need this, otherwise there won't be any open, closed, public groups
   // showed.
-  $query->addWhere($current_where, 'groups_field_data.type', ['flexible_group'], 'NOT IN');
+  $query->addWhere($current_where, 'groups_field_data.type', ['flexible_group','blp_project','blp_event'], 'NOT IN');
 
   // In this case we are LU, we already checked if we have the manage groups
   // permission. So lets add a check to remove flexible groups
